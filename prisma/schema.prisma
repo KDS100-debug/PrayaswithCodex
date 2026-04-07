@@ -238,6 +238,9 @@ model Payment {
   amount               Decimal             @db.Decimal(10, 2)
   gateway              String?
   gatewayReference     String?             @unique
+  razorpayOrderId      String?             @unique
+  razorpayPaymentId    String?             @unique
+  razorpaySignature    String?
   idempotencyKey       String?             @unique
   paymentDate          DateTime            @default(now())
   reconciledAt         DateTime?

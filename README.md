@@ -1,164 +1,121 @@
-# Multi-School SaaS Platform (Production-Oriented Starter)
+# Prayas Multi-School Platform
 
-This repository delivers a deployment-ready **enterprise starter** for a centralized platform serving **3 schools** under one organization with multi-tenancy, RBAC, fee payments, offline collections, bookstore, results, publication workflow, and admin governance.
+Production-oriented multi-school management system for **3 schools** with role-based modules for super admin, school admins, students/parents, fee collections, bookstore, publications, and reports.
 
-## 1) Project Folder Structure
+## Architecture Summary
 
-```text
-.
-├── app/
-│   ├── api/
-│   │   ├── auth/register/route.ts
-│   │   ├── books/
-│   │   ├── health/route.ts
-│   │   ├── payments/route.ts
-│   │   ├── publications/route.ts
-│   │   └── rankers/
-│   ├── admin/
-│   ├── student/
-│   ├── layout.tsx
-│   └── page.tsx
-├── prisma/
-│   ├── schema.prisma
-│   └── seed.ts
-├── src/
-│   ├── lib/prisma.ts
-│   └── server/
-│       ├── services/
-│       │   ├── auth-service.ts
-│       │   ├── payment-service.ts
-│       │   └── publication-service.ts
-│       └── validators/auth.ts
-├── tests/register-schema.test.ts
-├── .github/workflows/ci.yml
-├── docker-compose.yml
-├── Dockerfile
-├── nginx/default.conf
-├── .env.example
-└── README.md
-```
+- **Frontend**: Next.js (Vercel) with Razorpay Checkout for fee/book payments.
+- **Backend**: Next.js API endpoints deployed separately on Render.
+- **Database**: Hostinger hPanel PostgreSQL/MySQL-compatible target (Prisma currently configured for PostgreSQL).
+- **Payments**: Razorpay-only flow with order creation, signature verification, and webhook validation.
+- **Offline fees**: School-admin manual entries stored separately as `OFFLINE` channel records.
 
-## 2) Database Schema
+## Environment Variables
 
-Implemented in `prisma/schema.prisma` with normalized relational entities and enums for:
+### Frontend (Vercel)
+Use `env/frontend.env.example`:
 
-- organizations, schools, users, roles, permissions
-- students, parents, classes, sections, academic sessions
-- fee structures, assignments, invoices, payments
-- offline payment entries, payment receipts
-- books, carts, orders, order items
-- exam results, notices
-- publications (approve/reject flow)
-- rankers (super-admin updates)
-- admin management logs (password change governance)
-- audit logs, settings, payment gateways
+- `NEXT_PUBLIC_APP_URL`
+- `NEXT_PUBLIC_API_URL`
+- `NEXT_PUBLIC_RAZORPAY_KEY_ID`
 
-### Your requested registration handling
+### Backend (Render)
+Use `env/backend.env.example`:
 
-- `PUBLIC` registration stores in `User` with:
-  - `id, name, phone, email(optional), address, passwordHash, role=PUBLIC`
-  - student-only fields remain null.
-- `STUDENT` registration stores in `User` with:
-  - `id, name, fatherName, rollNumber, caste, className, passwordHash, role=STUDENT`.
+- `DATABASE_URL`
+- `DIRECT_DATABASE_URL`
+- `FRONTEND_URL`
+- `JWT_SECRET`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL`
+- `RAZORPAY_KEY_ID`
+- `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_WEBHOOK_SECRET`
+- `CORS_ALLOWED_ORIGINS`
 
-### Your requested payment/publication/book/ranker/admin rules
+> Never expose `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, or database passwords in public variables.
 
-- `PaymentReceipt` stores `paymentId, userId, receiptPdfUrl`.
-- Each user can query all receipts by `userId` (`GET /api/payments?userId=...`).
-- Public user publication submit goes to `Publication` with pending status.
-- Admin workflow supports status `PENDING/APPROVED/REJECTED`; approved publications are rendered on `app/page.tsx` (website index).
-- Admin uploaded books are stored in `Book` (`title, author, price, available, coverImageUrl, pdfUrl, tags, description`).
-- Super admin rankers stored in `Ranker`.
-- Super admin password override logged in `AdminManagementLog`.
+## Razorpay Flow
 
-## 3) Key Architecture Explanation
+1. Frontend calls `/api/payments/create-order` with `idempotencyKey`.
+2. Backend creates Razorpay order and stores `Payment` in `PENDING`.
+3. Checkout returns payment details to frontend handler.
+4. Frontend calls `/api/payments/verify`.
+5. Backend verifies HMAC signature and marks payment `PAID` or `FAILED`.
+6. Razorpay webhook (`/api/payments/webhook`) independently verifies events for reconciliation.
 
-- **Frontend**: Next.js App Router (TypeScript), responsive-first.
-- **Backend**: API route modules with service layer abstraction.
-- **ORM/DB**: Prisma + PostgreSQL.
-- **Security**:
-  - Password hashing via bcrypt.
-  - Request validation via Zod.
-  - RBAC enums and role model scaffolding.
-- **Payments**:
-  - payment + receipt tracking schema,
-  - online/offline channel split,
-  - idempotency + gateway reference fields.
-- **Multi-tenancy**:
-  - school-aware foreign keys,
-  - super-admin can query cross-school,
-  - school-admin scope by schoolId.
-- **DevOps**:
-  - Docker + docker-compose,
-  - Nginx reverse proxy sample,
-  - GitHub Actions CI for tests,
-  - health endpoint.
+## Offline Payment Flow
 
-## 4) Complete Implementation Code
+- School admin submits `/api/payments/offline`.
+- Backend creates a `Payment` with `channel=OFFLINE` and linked `OfflinePaymentEntry`.
+- No Razorpay trigger occurs for offline records.
+- Super admin reporting can separately aggregate online/offline totals.
 
-Core implementation exists in this repository and is organized by modular boundaries:
+## API Endpoints
 
-- API endpoints in `app/api/**`
-- business logic in `src/server/services/**`
-- validation rules in `src/server/validators/**`
-- persistent model and constraints in `prisma/schema.prisma`
+- `POST /api/auth/register`
+- `GET /api/payments?userId=...`
+- `POST /api/payments/create-order`
+- `POST /api/payments/verify`
+- `POST /api/payments/webhook`
+- `POST /api/payments/offline`
+- `GET /api/publications`
+- `POST /api/publications`
+- `GET /api/reports/payments`
+- `GET /api/health`
 
-## 5) Deployment Instructions
+## Deploy (Vercel + Render + Hostinger DB)
 
-### Local
+### 1) Database (Hostinger)
+- Create PostgreSQL database.
+- Whitelist Render outbound IPs if required.
+- Build `DATABASE_URL` with SSL if required by Hostinger:
+  - `postgresql://USER:PASSWORD@HOST:PORT/DB?schema=public&sslmode=require`
 
-1. Install deps: `npm install`
-2. Configure env from `.env.example`
-3. Generate Prisma client: `npm run prisma:generate`
-4. Run migrations: `npm run prisma:migrate`
-5. Seed sample data: `npm run prisma:seed`
-6. Start dev server: `npm run dev`
+### 2) Backend (Render)
+- Deploy repo as Web Service using `render.yaml`.
+- Configure all backend env vars from `env/backend.env.example`.
+- Set webhook URL in Razorpay dashboard:
+  - `https://<render-service>/api/payments/webhook`
 
-### Docker (production style)
+### 3) Frontend (Vercel)
+- Deploy frontend app.
+- Configure frontend env vars from `env/frontend.env.example`.
+- Set `NEXT_PUBLIC_API_URL` to Render backend base URL.
 
-1. `docker compose build`
-2. `docker compose up -d`
-3. App at `http://localhost`
+### 4) Razorpay Dashboard
+- Use production/live keys in production.
+- Add webhook secret and keep it only in backend env.
+- Configure success/callback URLs to frontend domain.
 
-### Cloud/VPS notes
+## Credentials Mapping Template (fill from screenshots)
 
-- Put SSL termination at Nginx/Load balancer.
-- Use managed PostgreSQL backups (daily snapshot + WAL retention).
-- Use object storage (S3/Cloudinary) for PDFs/images.
-- Run migrations in deployment pipeline before app rollout.
-- Add centralized logging (e.g., OpenSearch, Datadog, Loki).
+- `RAZORPAY_KEY_ID` = **needs confirmation from screenshot**
+- `RAZORPAY_KEY_SECRET` = **needs confirmation from screenshot**
+- `RAZORPAY_WEBHOOK_SECRET` = **needs confirmation from screenshot**
+- `NEXT_PUBLIC_RAZORPAY_KEY_ID` = same as `RAZORPAY_KEY_ID`
+- `DATABASE_URL` (Hostinger) = **needs confirmation from screenshot**
+- `NEXT_PUBLIC_API_URL` (Render URL) = **needs confirmation from screenshot**
+- `NEXT_PUBLIC_APP_URL` (Vercel URL/domain) = **needs confirmation from screenshot**
 
-## 6) Commands to Run (Local and Production)
+## Local Run
 
 ```bash
-# development
 npm install
 npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:seed
 npm run dev
-
-# quality
-npm run test
-
-# production image
-npm run build
-npm run start
-
-# containerized production-like
-docker compose build
-docker compose up -d
 ```
 
-## Demo Accounts (seed)
+## Production Checklist
 
-- superadmin@demo.local / SuperAdmin@123
-- admin1@demo.local / Admin@123
-- admin2@demo.local / Admin@123
-- admin3@demo.local / Admin@123
-
-## Scalability Notes
-
-- Add more schools by inserting new `School` rows (no schema rewrite).
-- Payment gateway abstraction via `PaymentGateway` config table.
-- Fine-grained permissions can be expanded through `Role` + `Permission` models.
+- [ ] SSL enabled for Vercel/Render custom domains
+- [ ] All secrets set in Vercel/Render env manager
+- [ ] Razorpay webhook secret set and verified
+- [ ] DB SSL mode validated
+- [ ] `NEXT_PUBLIC_API_URL` points to Render backend
+- [ ] Health check (`/api/health`) returns ok
+- [ ] Payment success/failure/webhook tested end-to-end
+- [ ] Offline payment entry tested by school-admin role
+- [ ] Super-admin report validates online vs offline totals

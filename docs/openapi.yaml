@@ -1,24 +1,44 @@
 openapi: 3.0.3
 info:
   title: Multi-School SaaS API
-  version: 1.0.0
+  version: 2.0.0
 paths:
   /api/health:
     get:
       summary: Health check
-      responses:
-        '200':
-          description: healthy
   /api/auth/register:
     post:
       summary: Register PUBLIC or STUDENT user
   /api/payments:
     get:
       summary: List user receipts
+  /api/payments/create-order:
     post:
-      summary: Create payment+receipt
+      summary: Create Razorpay order and local pending payment row
+  /api/payments/verify:
+    post:
+      summary: Verify Razorpay signature and mark payment status
+  /api/payments/webhook:
+    post:
+      summary: Handle Razorpay webhook events securely
+  /api/payments/offline:
+    post:
+      summary: Manually record offline school fee payment
+  /api/books:
+    get:
+      summary: List books by school
+    post:
+      summary: Admin adds a book
+  /api/rankers:
+    get:
+      summary: List rankers
+    post:
+      summary: Super-admin updates rankers
   /api/publications:
     get:
       summary: List approved publications
     post:
       summary: Submit publication for approval
+  /api/reports/payments:
+    get:
+      summary: Online vs offline payment report (school or global)

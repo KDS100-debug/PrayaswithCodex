@@ -15,7 +15,6 @@ export async function registerUser(payload: RegisterInput) {
         email: payload.email,
         address: payload.address,
         passwordHash,
-        // student-specific columns intentionally blank
         fatherName: null,
         rollNumber: null,
         caste: null,
@@ -24,8 +23,11 @@ export async function registerUser(payload: RegisterInput) {
     });
   }
 
+  const school = await prisma.school.findFirst({ where: { name: payload.schoolName } });
+
   return prisma.user.create({
     data: {
+      schoolId: school?.id,
       role: UserRole.STUDENT,
       name: payload.name,
       fatherName: payload.fatherName,
