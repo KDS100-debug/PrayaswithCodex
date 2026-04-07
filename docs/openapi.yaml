@@ -1,0 +1,24 @@
+openapi: 3.0.3
+info:
+  title: Multi-School SaaS API
+  version: 1.0.0
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: healthy
+  /api/auth/register:
+    post:
+      summary: Register PUBLIC or STUDENT user
+  /api/payments:
+    get:
+      summary: List user receipts
+    post:
+      summary: Create payment+receipt
+  /api/publications:
+    get:
+      summary: List approved publications
+    post:
+      summary: Submit publication for approval
