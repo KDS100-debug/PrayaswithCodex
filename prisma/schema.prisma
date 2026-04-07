@@ -1,0 +1,437 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  STUDENT
+  PARENT
+  PUBLIC
+  ACCOUNTANT
+}
+
+enum PaymentKind {
+  FEE
+  BOOK_ORDER
+}
+
+enum PaymentChannel {
+  ONLINE
+  OFFLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  REVERSED
+  VERIFIED
+  REJECTED
+}
+
+enum PublicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  schools     School[]
+  settings    Setting[]
+}
+
+model School {
+  id             String          @id @default(cuid())
+  organizationId String
+  slug           String          @unique
+  name           String
+  logoUrl        String?
+  address        String
+  contactEmail   String?
+  contactPhone   String?
+  principalName  String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  users          User[]
+  students       Student[]
+  books          Book[]
+  classes        Class[]
+  notices        Notice[]
+  sessions       AcademicSession[]
+  feeStructures  FeeStructure[]
+  examResults    ExamResult[]
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  permissions Permission[]
+  users       User[]
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  action      String
+  resource    String
+  roleId      String
+  role        Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([action, resource, roleId])
+}
+
+model User {
+  id                    String               @id @default(cuid())
+  schoolId              String?
+  roleId                String?
+  role                  UserRole
+  name                  String
+  fatherName            String?
+  phone                 String?
+  email                 String?              @unique
+  address               String?
+  passwordHash          String
+  rollNumber            String?
+  caste                 String?
+  className             String?
+  isActive              Boolean              @default(true)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  deletedAt             DateTime?
+  school                School?              @relation(fields: [schoolId], references: [id])
+  dbRole                Role?                @relation(fields: [roleId], references: [id])
+  student               Student?
+  payments              Payment[]
+  paymentReceipts       PaymentReceipt[]
+  publications          Publication[]
+  rankersUpdated        Ranker[]             @relation("RankerUpdatedBy")
+  passwordChangesByRoot AdminManagementLog[] @relation("ChangedBy")
+  passwordChangesTarget AdminManagementLog[] @relation("TargetUser")
+  notices               Notice[]
+}
+
+model Parent {
+  id          String    @id @default(cuid())
+  studentId   String    @unique
+  name        String
+  phone       String
+  email       String?
+  address     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  student     Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Student {
+  id              String            @id @default(cuid())
+  userId          String            @unique
+  schoolId        String
+  classId         String?
+  sectionId       String?
+  admissionNumber String            @unique
+  academicStatus  String            @default("ACTIVE")
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school          School            @relation(fields: [schoolId], references: [id])
+  class           Class?            @relation(fields: [classId], references: [id])
+  section         Section?          @relation(fields: [sectionId], references: [id])
+  parent          Parent?
+  feeAssignments  FeeAssignment[]
+  invoices        Invoice[]
+  examResults     ExamResult[]
+  offlineEntries  OfflinePaymentEntry[]
+  orders          Order[]
+}
+
+model Class {
+  id        String    @id @default(cuid())
+  schoolId  String
+  name      String
+  sections  Section[]
+  students  Student[]
+  school    School    @relation(fields: [schoolId], references: [id])
+
+  @@unique([schoolId, name])
+}
+
+model Section {
+  id       String    @id @default(cuid())
+  classId  String
+  name     String
+  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  students Student[]
+
+  @@unique([classId, name])
+}
+
+model AcademicSession {
+  id        String   @id @default(cuid())
+  schoolId  String
+  yearLabel String
+  isActive  Boolean  @default(false)
+  school    School   @relation(fields: [schoolId], references: [id])
+
+  @@unique([schoolId, yearLabel])
+}
+
+model FeeStructure {
+  id              String   @id @default(cuid())
+  schoolId        String
+  sessionId       String?
+  className       String
+  tuitionAmount   Decimal  @db.Decimal(10, 2)
+  transportAmount Decimal? @db.Decimal(10, 2)
+  examAmount      Decimal? @db.Decimal(10, 2)
+  libraryAmount   Decimal? @db.Decimal(10, 2)
+  miscAmount      Decimal? @db.Decimal(10, 2)
+  school          School   @relation(fields: [schoolId], references: [id])
+  session         AcademicSession? @relation(fields: [sessionId], references: [id])
+  feeAssignments  FeeAssignment[]
+}
+
+model FeeAssignment {
+  id             String   @id @default(cuid())
+  studentId      String
+  feeStructureId String
+  discountAmount Decimal? @db.Decimal(10, 2)
+  scholarship    Decimal? @db.Decimal(10, 2)
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeStructure   FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id              String      @id @default(cuid())
+  studentId       String
+  invoiceNumber   String      @unique
+  dueDate         DateTime
+  totalAmount     Decimal     @db.Decimal(10, 2)
+  paidAmount      Decimal     @default(0) @db.Decimal(10, 2)
+  lateFeeAmount   Decimal?    @db.Decimal(10, 2)
+  status          PaymentStatus @default(PENDING)
+  createdAt       DateTime    @default(now())
+  student         Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  payments        Payment[]
+}
+
+model Payment {
+  id                   String              @id @default(cuid())
+  userId               String
+  invoiceId            String?
+  schoolId             String?
+  kind                 PaymentKind
+  channel              PaymentChannel
+  status               PaymentStatus       @default(PENDING)
+  amount               Decimal             @db.Decimal(10, 2)
+  gateway              String?
+  gatewayReference     String?             @unique
+  razorpayOrderId      String?             @unique
+  razorpayPaymentId    String?             @unique
+  razorpaySignature    String?
+  idempotencyKey       String?             @unique
+  paymentDate          DateTime            @default(now())
+  reconciledAt         DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  user                 User                @relation(fields: [userId], references: [id])
+  invoice              Invoice?            @relation(fields: [invoiceId], references: [id])
+  school               School?             @relation(fields: [schoolId], references: [id])
+  receipt              PaymentReceipt?
+  offlineEntry         OfflinePaymentEntry?
+  order                Order?
+}
+
+model OfflinePaymentEntry {
+  id                   String        @id @default(cuid())
+  paymentId            String        @unique
+  studentId            String
+  classSection         String?
+  feeType              String
+  paymentMode          String
+  transactionNumber    String?
+  receivedBy           String
+  remarks              String?
+  receiptNumber        String        @unique
+  proofAttachmentUrl   String?
+  balanceRemaining     Decimal       @default(0) @db.Decimal(10, 2)
+  status               PaymentStatus @default(PENDING)
+  createdByUserId      String
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  payment              Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  student              Student       @relation(fields: [studentId], references: [id])
+}
+
+model PaymentReceipt {
+  id             String   @id @default(cuid())
+  paymentId      String   @unique
+  userId         String
+  receiptPdfUrl  String
+  createdAt      DateTime @default(now())
+  payment        Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id])
+}
+
+model Publication {
+  id          String            @id @default(cuid())
+  userId      String
+  title       String
+  author      String
+  category    String
+  abstract    String
+  fileUrl     String
+  images      String[]
+  status      PublicationStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  approvedBy  String?
+  approvedAt  DateTime?
+  user        User              @relation(fields: [userId], references: [id])
+}
+
+model Book {
+  id             String   @id @default(cuid())
+  schoolId       String
+  title          String
+  author         String
+  classTag       String?
+  subject        String?
+  price          Decimal  @db.Decimal(10, 2)
+  available      Boolean  @default(true)
+  coverImageUrl  String?
+  pdfUrl         String?
+  tags           String[]
+  description    String?
+  stock          Int      @default(0)
+  sku            String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  school         School   @relation(fields: [schoolId], references: [id])
+  orderItems     OrderItem[]
+}
+
+model Cart {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  createdAt DateTime  @default(now())
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  schoolId      String
+  studentId     String
+  paymentId     String?       @unique
+  status        String        @default("pending")
+  totalAmount   Decimal       @db.Decimal(10, 2)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  student       Student       @relation(fields: [studentId], references: [id])
+  school        School        @relation(fields: [schoolId], references: [id])
+  payment       Payment?      @relation(fields: [paymentId], references: [id])
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  bookId    String
+  quantity  Int
+  unitPrice Decimal  @db.Decimal(10, 2)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  book      Book     @relation(fields: [bookId], references: [id])
+}
+
+model ExamResult {
+  id          String   @id @default(cuid())
+  schoolId    String
+  studentId   String
+  examTerm    String
+  academicYear String
+  subject     String
+  marks       Decimal  @db.Decimal(5, 2)
+  grade       String
+  remarks     String?
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  school      School   @relation(fields: [schoolId], references: [id])
+  student     Student  @relation(fields: [studentId], references: [id])
+}
+
+model Notice {
+  id          String   @id @default(cuid())
+  schoolId    String?
+  title       String
+  content     String
+  createdById String
+  createdAt   DateTime @default(now())
+  school      School?  @relation(fields: [schoolId], references: [id])
+  createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
+model Ranker {
+  id            String   @id @default(cuid())
+  schoolId       String
+  academicYear   String
+  className      String
+  rankPosition   Int
+  studentName    String
+  score          Decimal  @db.Decimal(6, 2)
+  updatedByUserId String
+  createdAt      DateTime @default(now())
+  school         School   @relation(fields: [schoolId], references: [id])
+  updatedBy      User     @relation("RankerUpdatedBy", fields: [updatedByUserId], references: [id])
+}
+
+model AdminManagementLog {
+  id            String   @id @default(cuid())
+  changedById   String
+  targetUserId  String
+  action        String
+  reason        String?
+  createdAt     DateTime @default(now())
+  changedBy     User     @relation("ChangedBy", fields: [changedById], references: [id])
+  targetUser    User     @relation("TargetUser", fields: [targetUserId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  action      String
+  entityType  String
+  entityId    String
+  schoolId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model Setting {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  value          Json
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+}
+
+model PaymentGateway {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  provider  String
+  isEnabled Boolean  @default(false)
+  config    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
